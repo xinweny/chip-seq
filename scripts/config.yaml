@@ -1,0 +1,4 @@
+base: "/rds/project/rs2099/rds-rs2099-toxgenomics/chip-seq"
+hg38:
+  gtf: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCh38_gencode_r34/annotation/genes.gtf"
+  bed_genome: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCh38_gencode_r34/genome_fasta/chromsizes.txt"

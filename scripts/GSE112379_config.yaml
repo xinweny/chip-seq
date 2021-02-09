@@ -1,0 +1,116 @@
+chip_dict:
+  GSM3068958_HEK_CHX_HS_RPB1_rep1:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068959_HEK_CHX_HS_RPB1_rep2:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068960_HEK_CHX_NHS_RPB1_rep1:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068961_HEK_CHX_NHS_RPB1_rep2:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068964_HEK_Scramble_HS_RPB1_rep1:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068965_HEK_Scramble_HS_RPB1_rep2:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068966_HEK_Scramble_HS_RPB1_rep3:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068967_HEK_Scramble_NHS_RPB1_rep1:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068968_HEK_Scramble_NHS_RPB1_rep2:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068969_HEK_Scramble_NHS_RPB1_rep3:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068970_HEK_siNELFE_HS_RPB1_rep1:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068971_HEK_siNELFE_HS_RPB1_rep2:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068972_HEK_siNELFE_NHS_RPB1_rep1:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068973_HEK_siNELFE_NHS_RPB1_rep2:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068974_HEK_Ub-E1_HS_RPB1_rep1:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068975_HEK_Ub-E1_HS_RPB1_rep2:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068976_HEK_Ub-E1_NHS_RPB1_rep1:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068977_HEK_Ub-E1_NHS_RPB1_rep2:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068978_HEK_Vehicle_HS_RPB1_rep1:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068979_HEK_Vehicle_HS_RPB1_rep2:
+    control: GSM3068962_HEK_HS_Input
+    broad: True
+  GSM3068980_HEK_Vehicle_NHS_RPB1_rep1:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068981_HEK_Vehicle_NHS_RPB1_rep2:
+    control: GSM3068963_HEK_NHS_Input
+    broad: True
+  GSM3068988_K562_HS_NELFA_rep1:
+    control: GSM3068982_K562_HS_Input
+    broad: True
+  GSM3068983_K562_HS_NELFA_rep2:
+    control: GSM3068982_K562_HS_Input
+    broad: True
+  GSM3068990_K562_NHS_NELFA_rep1:
+    control: GSM3068989_K562_NHS_Input
+    broad: True
+  GSM3068991_K562_NHS_NELFA_rep2:
+    control: GSM3068989_K562_NHS_Input
+    broad: True
+  GSM3068984_K562_HS_NELFE_rep1:
+    control: GSM3068982_K562_HS_Input
+    broad: True
+  GSM3068985_K562_HS_NELFE_rep2:
+    control: GSM3068982_K562_HS_Input
+    broad: True
+  GSM3068992_K562_NHS_NELFE_rep1:
+    control: GSM3068989_K562_NHS_Input
+    broad: True
+  GSM3068993_K562_NHS_NELFE_rep2:
+    control: GSM3068989_K562_NHS_Input
+    broad: True
+  GSM3068986_K562_HS_RPB1_rep1:
+    control: GSM3068982_K562_HS_Input
+    broad: True
+  GSM3068987_K562_HS_RPB1_rep2:
+    control: GSM3068982_K562_HS_Input
+    broad: True
+  GSM3068994_K562_NHS_RPB1_rep1:
+    control: GSM3068989_K562_NHS_Input
+    broad: True
+  GSM3068995_K562_NHS_RPB1_rep2:
+    control: GSM3068989_K562_NHS_Input
+    broad: True
+  GSM3375650_K562_HS_MAPK14_rep1:
+    control: GSM3068982_K562_HS_Input
+    broad: True
+  GSM3375651_K562_HS_MAPK14_rep2:
+    control: GSM3068982_K562_HS_Input
+    broad: True
+  GSM3375648_K562_NHS_MAPK14_rep1:
+    control: GSM3068989_K562_NHS_Input
+    broad: True
+  GSM3375649_K562_NHS_MAPK14_rep2:
+    control: GSM3068989_K562_NHS_Input
+    broad: True
+  
