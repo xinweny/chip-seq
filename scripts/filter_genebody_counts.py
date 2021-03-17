@@ -29,7 +29,7 @@ def filter_transcripts(prom_df, gb_df, rpm_thresh, dist_thresh, gene_bed, chrom_
     counts_df = prom_df.drop(prom_df.iloc[:, 0:7], axis=1)
     samples = len(counts_df.columns)
 
-    # Filter on promoter RPM in both control and treatmen
+    # Filter on promoter RPM in both control and treatment
     print(f"Filtering transcripts by mean RPM > {rpm_thresh}...")
 
     prom_df['mean_rpm'] = counts_df.mean(axis=1)
@@ -113,7 +113,7 @@ def main():
 
     args = parser.parse_args()
 
-    prom_df = pd.read_csv(args.p, header=0, sep='\t')
+    prom_df = pd.read_csv(args.t, header=0, sep='\t')
     gb_df = pd.read_csv(args.b, header=0, sep='\t')
 
     # Calculate RPM across raw counts table

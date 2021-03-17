@@ -1,4 +1,13 @@
 base: "/rds/project/rs2099/rds-rs2099-toxgenomics/chip-seq"
 hg38:
   gtf: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCh38_gencode_r34/annotation/genes.gtf"
-  bed_genome: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCh38_gencode_r34/genome_fasta/chromsizes.txt"
+  bt_index: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCh38_gencode_r34/BowtieIndex/genome"
+  chrom_sizes: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCh38_gencode_r34/genome_fasta/chromsizes.txt"
+  bed_genome: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCh38_gencode_r34/annotation/genes.bed"
+  blacklist_bed: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCh38_gencode_r34/annotation/blacklist.bed"
+mm10:
+  gtf: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCm38_gencode_M25/annotation/genes.gtf"
+  bt_index: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCm38_gencode_M25/BowtieIndex/genome"
+  chrom_sizes: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCm38_gencode_M25/genome_fasta/chromsizes.txt"
+  bed_genome: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCm38_gencode_M25/annotation/genes.bed"
+  blacklist_bed: "/rds/project/rs2099/rds-rs2099-toxgenomics/shared/GRCm38_gencode_M25/annotation/blacklist.bed"

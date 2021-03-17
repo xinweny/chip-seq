@@ -1,0 +1,146 @@
+#### Packages ####
+import glob, os
+import pandas as pd
+
+#### Functions ####
+def get_samples(path):
+    samples = set([os.path.basename(sample).replace(f".filtered.bam", '') for sample in glob.glob(f"{path}/*.filtered.bam")])
+
+    return samples
+
+def custom_param(param, default):
+    try:
+        return config[param]
+
+    except KeyError:
+        return default
+
+#### Config ####
+configfile: "config/config.yaml"
+workdir: config['base']
+
+PREFIX = f"data/{config['proj']}"
+
+GENOME = config['genome']
+LAYOUT = config['layout']
+
+ALL_SAMPLES = get_samples(f"{PREFIX}/filtered_bam")
+
+#### Workflow ####
+rule all:
+    input:
+        expand(f"{PREFIX}/deepTools_ChIP/bigWig/{{sample}}.bw", sample=ALL_SAMPLES),
+        expand(f"{PREFIX}/deepTools_ChIP/bigWig/{{sample}}_cpm.bw", sample=ALL_SAMPLES)
+    params:
+        job_name = f"{config['proj']}_ALL"
+    resources:
+        time_min = 1,
+        cpus = 1
+
+rule deeptools_bamcoverage:
+    input:
+        f"{PREFIX}/filtered_bam/{{sample}}.filtered.bam"
+    output:
+        f"{PREFIX}/deepTools_ChIP/bigWig/{{sample}}.bw"
+    params:
+        job_name = f"{config['proj']}_{{sample}}_BAMCOV",
+        blacklist = config[GENOME]['blacklist_bed'],
+        extend_reads = "--extendReads" if LAYOUT == 'PAIRED' else ""
+    resources:
+        cpus = 12,
+        time_min = 60
+    shell:
+        """
+        bamCoverage -p {resources.cpus} \
+        --binSize 1 \
+        --outFileFormat bigwig \
+        --blackListFileName {params.blacklist} \
+        --skipNAs {params.extend_reads} --samFlagInclude 64 \
+        --bam {input} --outFileName {output}
+        """
+
+rule deeptools_bamcoverage_cpm:
+    input:
+        f"{PREFIX}/filtered_bam/{{sample}}.filtered.bam"
+    output:
+        f"{PREFIX}/deepTools_ChIP/bigWig/{{sample}}_cpm.bw"
+    params:
+        job_name = f"{config['proj']}_{{sample}}_BAMCOV_CPM",
+        extend_reads = "--extendReads" if LAYOUT == 'PAIRED' else ""
+    resources:
+        cpus = 12,
+        time_min = 60
+    shell:
+        """
+        bamCoverage -p {resources.cpus} \
+        --binSize 1 \
+        --normalizeUsing CPM \
+        --outFileFormat bigwig \
+        --skipNAs {params.extend_reads} --samFlagInclude 64 \
+        --bam {input} --outFileName {output}
+        """
+
+# rule deeptools_computematrix:
+#     input:
+#         expand(f"", sample=SAMPLES)
+#     output:
+#         f"{PREFIX}/deeptools_metaplot/{config['proj']}_matrix.gz"
+#     params:
+#         job_name = f"{config['proj']}_COMPUTEMATRIX",
+#         region_bed = config['deeptools_region_bed'],
+#         before_start = 1000,
+#         after_end = 1000
+#     resources:
+#         cpus = 10,
+#         time_min = 30
+#     shell:
+#         """
+#         computeMatrix reference-point -p {resources.cpus} \
+#         --referencePoint TSS \
+#         --regionsFileName {params.region_bed} \
+#         --beforeRegionStartLength {params.before_start} \
+#         --afterRegionStartLength {params.after_end} \
+#         --skipZeros \
+#         --scoreFileName {input} \
+#         --outFileName {output}
+#         """
+
+# rule deeptools_plotprofile:
+#     input:
+#         rules.deeptools_computematrix.output
+#     output:
+#         f"{config['proj']}_profilePlot.png"
+#     params:
+#         job_name = f"{config['proj']}_PLOTPROFILE"
+#     resources:
+#         cpus = 1,
+#         time_min = 10
+#     shell:
+#         """
+#         plotProfile \
+#         --averageType mean \
+#         --perGroup \
+#         --matrixFile {input.matrix_file} \
+#         --outFileName {output}
+#         """
+
+# rule deeptoos_plotheatmap:
+#     input:
+#         rules.deeptools_computematrix
+#     output:
+#         f"{config['proj']}_heatmap.png"
+#     params:
+#         job_name = f"{config['proj']}_HEATMAP"
+#     resources:
+#         cpus = 1,
+#         time_min = 10
+#     shell:
+#         """
+#         plotHeatmap \
+#         --averageTypeSummaryPlot mean \
+#         --colorMap 'magma' \
+#         --regionsLabel downregulated control \
+#         --perGroup \
+#         --matrixFile {input.matrix_file} \
+#         --outFileName {output}
+#         """

@@ -1,15 +1,31 @@
 #### Packages ####
 import glob, os
 import pandas as pd
+import math
 
 #### Functions ####
-def get_samples(path):
-    samples = set([os.path.basename(sample).replace(f".filtered.bam", '') for sample in glob.glob(f"{path}/*.filtered.bam")])
+def get_samples(path, ext):
+    samples = set([os.path.basename(sample).replace(f".{ext}", '') for sample in glob.glob(f"{path}*.{ext}")])
 
     if LAYOUT == 'PAIRED':
         samples = set([sample[:-2] for sample in samples])
 
     return samples
+
+def get_raw_reads(wcs):
+    if LAYOUT == 'PAIRED':  # Paired-end
+        path = expand(f"{PREFIX}/fastq/{wcs.sample}_{{i}}.fastq.gz", i=[1, 2])
+
+        if not os.path.exists(path[0]):
+            path = expand(f"{PREFIX}/fastq/other/{wcs.sample}_{{i}}.fastq.gz", i=[1, 2])
+
+    elif LAYOUT == 'SINGLE':  # Single-end
+        path = f"{PREFIX}/fastq/{wcs.sample}.fastq.gz"
+
+        if not os.path.exists(path):
+            path = f"{PREFIX}/fastq/other/{wcs.sample}.fastq.gz"
+
+    return path
 
 def infer_strandedness(bedgenome_path, bam_path):
     p = subprocess.Popen(['infer_experiment.py', '-r', bedgenome_path, '-i', bam_path],
@@ -22,7 +38,10 @@ def infer_strandedness(bedgenome_path, bam_path):
     fr_firststrand = float(rseqc_out[5].split(' ')[-1])
     fr_secondstrand = float(rseqc_out[4].split(' ')[-1])
 
-    threshold = 0.8
+    print(f"Fraction of reads to same strand: {fr_secondstrand}")
+    print(f"Fraction of reads to reverse strand: {fr_firststrand}")
+
+    threshold = 0.70
 
     if fr_firststrand > threshold:
         library_type = 'fr-firststrand'
@@ -32,15 +51,17 @@ def infer_strandedness(bedgenome_path, bam_path):
         library_type = 'fr-unstranded'
 
     if library_type == 'fr-firststrand':
-        strandedness = "-s"
-    elif library_type == 'fr-secondstrand':
         strandedness = "-S"
+    elif library_type == 'fr-secondstrand':
+        strandedness = "-s"
     elif library_type == 'fr-unstranded':
         strandedness = ""
 
-    print(f"Strandedness for bedtools multicov: {strandedness}")
-
     return strandedness
+
+def roundup(x, power):
+    tens = 10 ** power
+    return int(math.ceil(x / tens)) * tens
 
 def custom_param(param, default):
     try:
@@ -55,18 +76,115 @@ workdir: config['base']
 
 PREFIX = f"data/{config['proj']}"
 
-GENOME = config['organism']
+GENOME = config['genome']
+LAYOUT = config['layout']
 
-SAMPLES = get_samples(f"{PREFIX}/filtered_bam")
+SAMPLES = get_samples(f"{PREFIX}/fastq/**/", 'fastq.gz')
+SELECT_SAMPLES = get_samples(f"{PREFIX}/fastq/", 'fastq.gz')
 
 #### Workflow ####
 rule all:
-    f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_Gene.bed",
-    f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_GeneBody.bed",
-    f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_TSS.bed"
-    f"{PREFIX}/count/{config['proj']}_TSSCounts.txt",
-    f"{PREFIX}/count/{config['proj']}_GeneBodyCounts.txt",
-    f"{PREFIX}/count/{config['proj']}_GeneBodyCounts_filtered.txt"
+    input:
+        expand(f"{PREFIX}/bowtie2/{{sample}}_filtered.bam", sample=SAMPLES),
+        expand(f"{PREFIX}/MACS2/{{sample}}_peaks.broadPeak", sample=SAMPLES),
+        f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_Gene.bed",
+        f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_GeneBody.bed",
+        f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_LongGeneEnd_{config['treatment_min']}min.bed",
+        f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_TSS_filtered.bed",
+        f"{PREFIX}/bedtools_multicov/{config['proj']}_TSSCounts.txt",
+        f"{PREFIX}/bedtools_multicov/{config['proj']}_GeneBodyCounts.txt",
+        f"{PREFIX}/bedtools_multicov/{config['proj']}_GeneBodyCounts_filtered.txt"
+    params:
+        job_name = f"{config['proj']}_ALL"
+    resources:
+        time_min = 1,
+        cpus = 1
+
+rule trimgalore_single:
+    input:
+        get_raw_reads
+    output:
+        f"{PREFIX}/fastq_trimmed/{{sample}}_trimmed.fq.gz"
+    params:
+        job_name = f"{config['proj']}_{{sample}}_TRIMSINGLE"
+    resources:
+        time_min = int(custom_param('trim_time', 30)),
+        cpus = int(custom_param('trim_cpus', 12))
+    log: f"{PREFIX}/fastq/logs/Trim_galore.{{sample}}.log"
+    benchmark: f"{PREFIX}/fastq/.benchmark/Trim_galore.{{sample}}.benchmark"
+    shell:
+        f"""
+        trim_galore -j {{resources.cpus}} \
+        --stringency 2 -q 30 --FASTQc \
+        -o {PREFIX}/fastq_trimmed {{input}} --gzip &> {{log}}
+        """
+
+rule trimgalore_paired:
+    input:
+        get_raw_reads
+    output:
+        f"{PREFIX}/fastq_trimmed/{{sample}}_1_val_1.fq.gz",
+        f"{PREFIX}/fastq_trimmed/{{sample}}_2_val_2.fq.gz"
+    params:
+        job_name = f"{config['proj']}_{{sample}}_TRIMPAIRED"
+    resources:
+        time_min = int(custom_param('trim_time', 30)),
+        cpus = int(custom_param('trim_cpus', 24))
+    log: f"{PREFIX}/fastq/log/Trim_galore.{{sample}}.log"
+    benchmark: f"{PREFIX}/fastq/.benchmark/Trim_galore.{{sample}}.benchmark"
+    shell:
+        f"""
+        trim_galore -j {{resources.cpus}} \
+        --stringency 2 -q 30 --paired --FASTQc \
+        -o {PREFIX}/fastq_trimmed {{input}} --gzip &> {{log}}
+        """
+
+rule bowtie2_align:
+    input:
+        rules.trimgalore_single.output if LAYOUT == 'SINGLE' else rules.trimgalore_paired.output
+    output:
+        bam = f"{PREFIX}/bowtie2/{{sample}}.bam",
+        bam_filtered = f"{PREFIX}/bowtie2/{{sample}}_filtered.bam"
+    params:
+        job_name = f"{config['proj']}_{{sample}}_BOWTIE2",
+        input_command = lambda wildcards, input: f"-U {input}" if LAYOUT == 'SINGLE' else f"-1 {input[0]} -2 {input[1]}",
+        bt_index = config[GENOME]['bt_index'],
+        rmdup_layout = "-s" if LAYOUT == 'SINGLE' else ""
+    resources:
+        time_min = int(custom_param('bt_time', 60)),
+        cpus = int(custom_param('bt_cpus', 56))
+    conda: "envs/chip-seq.yml"
+    shell:
+        """
+        bowtie2 -p {resources.cpus} --local --no-discordant \
+        -x {params.bt_index} \
+        {params.input_command} | \
+        samtools view -bS - | samtools sort -t {resources.cpus} -o {output.bam} -
+        samtools rmdup {params.rmdup_layout} {output.bam} {output.bam_filtered}
+        """
+
+rule macs2_callpeak:
+    input:
+        rules.bowtie2_align.output.bam_filtered
+    output:
+        f"{PREFIX}/MACS2/{{sample}}_peaks.broadPeak"
+    params:
+        job_name = f"{config['proj']}_{{sample}}_MACS2",
+        bam_format = "BAM" if LAYOUT == 'SINGLE' else 'BAMPE',
+        control_input = f"-c {PREFIX}/bowtie2/{config['chip_input']}.bam" if custom_param('chip_input', '') != '' else '',
+        extsize = int(custom_param('extsize', 200))
+    resources:
+        time_min = 30,
+        cpus = 1
+    shell:
+        f"""
+        macs2 callpeak --broad \
+        --nomodel --extsize {{params.extsize}} \
+        --keep-dup all \
+        --outdir {PREFIX}/MACS2 -n {{wildcards.sample}} \
+        -f {{params.bam_format}} \
+        -t {{input}} {{params.control_input}}
+        """
 
 rule generate_beds:
     input:
@@ -74,83 +192,155 @@ rule generate_beds:
     output:
         gene_bed = f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_Gene.bed",
         gene_body_bed = f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_GeneBody.bed",
-        tss_bed = f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_TSS.bed"
+        tss_bed = f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_TSS.bed",
+        long_gene_bed = f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_LongGeneEnd_{config['treatment_min']}min.bed",
+        gene_desert_bed = f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_GeneDesert.bed"
     params:
         job_name = f"{config['proj']}_GENERATEBEDS",
+        output_bed_prefix = f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}",
         tss_shift = 500,
         gb_tss_shift = 1500,
         gb_tes_shift = 500,
         transcript_length_thresh = 2000,
-        transcript_id_col = 14 + 1
+        transcript_id_col = 12 + 1,
+        long_gene_thresh = int(custom_param('long_gene_thresh', roundup(int(config['treatment_min']) * 6000, 5))),
+        long_gene_length = int(config['treatment_min']) * 6000,
+        shift = 10000,
+        gene_desert_thresh = 1000000
     resources:
         time_min = 20,
         cpus = 1
     shell:
-    """
-    # Generate gene BED file
-        awk '$3 == "gene" {{ OFS="\\t"; print $0 }}' {params.genes_gtf} | \
-        awk '{{ OFS="\\t"; print $1,$4,$5,$10,$6,$7 }}' | \
-        sed 's/[";]//g' | sort -k1,1V -k2,2n | egrep -v '^H' > \
-        {output.gene_bed}
-
-    # Generate TSS and gene body BED files
-        awk '$3 == "transcript" {{ print }}' {params.genes_gtf} | gtf2bed | \
-        awk '{{ OFS="\\t"; \
-            if($6 == "+") \
-                print $1,$2,$2+{params.tss_shift},$4,$5,$6,${params.transcript_id_col}; \
-            else if($6 == "-") \
-                print $1,$3-{params.tss_shift},$3,$4,$5,$6,${params.transcript_id_col} }}' | \
-                sed 's/[";]//g' > \
-        {output.tss_bed}
-
-        awk '$3 == "transcript" {{ print }}' {params.genes_gtf} | gtf2bed | \
-        awk '{{ OFS="\\t"; \
-            if($3-$2 >= {params.transcript_length_thresh} && $6 == "+") \
-                print $1,$2+{params.gb_tss_shift},$3-{params.gb_tes_shift},$4,$5,$6,${params.transcript_id_col}; \
-            else if($3-$2 >= {params.transcript_length_thresh} && $6 == "-") \
-                print $1,$2+{params.gb_tes_shift},$3-{params.gb_tss_shift},$4,$5,$6,${params.transcript_id_col} }}' | \
-        sed 's/[";]//g' > \
-        {output.gene_body_bed}
-    """
-
-rule bedtools_multicov:
-    input:
-        bams = expand(f"{PREFIX}/filtered_bam/{{sample}}.filtered.bam", sample=SAMPLES),
-        tss_bed = rules.generate_beds.output.tss_bed
-    output:
-        tss_counts = f"{PREFIX}/count/{config['proj']}_TSSCounts.txt",
-        gene_body_counts = f"{PREFIX}/count/{config['proj']}_GeneBodyCounts.txt"
-    params:
-        job_name = f"{config['proj']}_BEDTOOLSMULTICOV",
-        strandedness = lambda wcs, input: custom_param('strandedness', infer_strandedness(config[GENOME]['bed_genome'], input[0][0])),
-        sample_names = "\\t".join(SAMPLES)
-    resources:
-        time_min = 180,
-        cpus = 1
-    shell:
         """
-        # Counting at TSS region
-            bedtools multicov {params.strandedness} -bams {input.bams} -bed {input.tss_bed} | \
-            sed '1 i chr\\tstart\\tend\\tname\\tscore\\tstrand\\ttranscript_id\\t{params.sample_names}' > \
-            {output.tss_counts}
+        # Generate gene BED file
+            awk '$3 == "gene" {{ OFS="\\t"; print $0 }}' {input.gtf} | \
+            awk '{{ OFS="\\t"; print $1,$4,$5,$10,$6,$7 }}' | \
+            sed 's/[";]//g' | sort -k1,1V -k2,2n | egrep -v '^H' > \
+            {output.gene_bed}
 
-        # Counting at gene body region
-            bedtools multicov {params.strandedness} -bams {input.bams} -bed {input.gene_body_bed} | \
-            sed '1 i chr\\tstart\\tend\\tname\\tscore\\tstrand\\ttranscript_id\\t{params.sample_names}' > {output.gene_body_counts}
+        # Generate long-end gene and gene desert BED files for normalisation
+            awk '{{ OFS = "\\t"; 
+                if($3-$2 >= {params.long_gene_thresh} && $6 == "+") \
+                    print $1,$2+{params.long_gene_length}+{params.shift},$3-{params.shift},$4,$5,$6; \
+                else if($3-$2 >= {params.long_gene_thresh} && $6 == "-") \
+                    print $1,$2+{params.shift},$3-{params.long_gene_length}-{params.shift},$4,$5,$6 }}' \
+            {output.gene_bed} > {output.long_gene_bed}
+
+            bedtools closest -a {output.gene_bed} -b {output.gene_bed} -N -iu -D a | \
+            awk '{{ OFS="\\t"; \
+                if($6 == "+" && $13 > {params.gene_desert_thresh}) \
+                    print $1,$3+{params.shift},$3+$13-{params.shift}; \
+                else if( $6 == "-" && $13 > {params.gene_desert_thresh}) \
+                    print $1,$2-$13+{params.shift},$2-{params.shift} }}' > \
+            {params.output_bed_prefix}_GeneDesertDownstream.bed
+
+            bedtools closest -a {output.gene_bed} -b {output.gene_bed} -N -id -D a | \
+            awk '{{ OFS="\\t"; \
+            if($6 == "+" && $13 < -{params.gene_desert_thresh}) \
+                print $1,$2+$13+{params.shift},$2-{params.shift}; \
+            else if($6 == "-" && $13 < -{params.gene_desert_thresh}) \
+                print $1,$3+{params.shift},$3-$13-{params.shift} }}' > \
+            {params.output_bed_prefix}_GeneDesertUpstream.bed
+
+            cat {params.output_bed_prefix}_GeneDesertDownstream.bed {params.output_bed_prefix}_GeneDesertUpstream.bed | sort -k1,1V -k2,2n | \
+            bedtools merge -i stdin > {output.gene_desert_bed}
+
+        # Generate TSS and gene body BED files
+            awk '$3 == "transcript" {{ print }}' {input.gtf} | gtf2bed | \
+            awk '{{ OFS="\\t"; \
+                if($6 == "+") \
+                    print $1,$2,$2+{params.tss_shift},$4,$5,$6,${params.transcript_id_col}; \
+                else if($6 == "-") \
+                    print $1,$3-{params.tss_shift},$3,$4,$5,$6,${params.transcript_id_col} }}' | \
+                    sed 's/[";]//g' > \
+            {output.tss_bed}
+
+            awk '$3 == "transcript" {{ print }}' {input.gtf} | gtf2bed | \
+            awk '{{ OFS="\\t"; \
+                if($3-$2 >= {params.transcript_length_thresh} && $6 == "+") \
+                    print $1,$2+{params.gb_tss_shift},$3-{params.gb_tes_shift},$4,$5,$6,${params.transcript_id_col}; \
+                else if($3-$2 >= {params.transcript_length_thresh} && $6 == "-") \
+                    print $1,$2+{params.gb_tes_shift},$3-{params.gb_tss_shift},$4,$5,$6,${params.transcript_id_col} }}' | \
+            sed 's/[";]//g' > \
+            {output.gene_body_bed}
         """
 
 rule filter_peaks:
     input:
-        gene_bed = rules.generate_beds.output.gene_bed
+        macs2_peaks = expand(f"{PREFIX}/MACS2/{{sample}}_peaks.broadPeak", sample=SELECT_SAMPLES),
+        tss_bed = rules.generate_beds.output.tss_bed
+    output:
+        filt_tss_bed = f"{PREFIX}/bed_regions/{os.path.basename(config[GENOME]['gtf'])[:-4]}_TSS_filtered.bed"
+    params:
+        job_name = f"{config['proj']}_FILTERPEAKS",
+        log10p = 5
+    resources:
+        cpus = 1,
+        time_min = 10
+    shell:
+        """
+        cat {input.macs2_peaks} | \
+        awk '{{ OFS="\\t"; if($8 > {params.log10p}) print }}' | \
+        bedtools intersect -a {input.tss_bed} -b stdin -wa -u > \
+        {output.filt_tss_bed}
+        """
+
+rule bedtools_multicov:
+    input:
+        bams = expand(f"{PREFIX}/bowtie2/{{sample}}.bam", sample=SELECT_SAMPLES),
+        gene_body_bed = rules.generate_beds.output.gene_body_bed,
+        tss_bed = rules.filter_peaks.output.filt_tss_bed,
+        long_gene_bed = rules.generate_beds.output.long_gene_bed,
+        gene_desert_bed = rules.generate_beds.output.gene_desert_bed
+    output:
+        tss_counts = f"{PREFIX}/bedtools_multicov/{config['proj']}_TSSCounts.txt",
+        gene_body_counts = f"{PREFIX}/bedtools_multicov/{config['proj']}_GeneBodyCounts.txt",
+        long_gene_counts = f"{PREFIX}/bedtools_multicov/{config['proj']}_{config['treatment_min']}min_LongGeneEndCounts.txt",
+        gene_desert_counts = f"{PREFIX}/bedtools_multicov/{config['proj']}_GeneDesertCounts.txt"
+    params:
+        job_name = f"{config['proj']}_BEDTOOLSMULTICOV",
+        sample_names = "\\t".join(SAMPLES)
+    resources:
+        time_min = 360,
+        cpus = 1
+    run:
+        strandedness = str(custom_param('strandedness', infer_strandedness(rules.generate_beds.output.gene_bed, input.bams[0])))
+
+        print(f"Strandedness for multicov: {strandedness}")
+
+        shell(f"""
+        # Counting at regions for normalisation
+            bedtools multicov {strandedness} -bams {{input.bams}} -bed {{input.long_gene_bed}} | \
+            sed '1 i chr\\tstart\\tend\\tname\\tscore\\tstrand\\t{{params.sample_names}}' > \
+            {{output.long_gene_counts}}
+
+            bedtools multicov {strandedness} -bams {{input.bams}} -bed {{input.gene_desert_bed}} | \
+            sed '1 i chr\\tstart\\tend\\t{sample_names}' > \
+            {{output.gene_desert_counts}}
+
+        # Counting at TSS region
+            bedtools multicov {strandedness} -bams {{input.bams}} -bed {{input.tss_bed}} | \
+            sed '1 i chr\\tstart\\tend\\tname\\tscore\\tstrand\\ttranscript_id\\t{{params.sample_names}}' > \
+            {{output.tss_counts}}
+
+        # Counting at gene body region
+            bedtools multicov {strandedness} -bams {{input.bams}} -bed {{input.gene_body_bed}} | \
+            sed '1 i chr\\tstart\\tend\\tname\\tscore\\tstrand\\ttranscript_id\\t{{params.sample_names}}' > \
+            {{output.gene_body_counts}}
+        """)
+
+rule filter_genebody:
+    input:
+        gene_bed = rules.generate_beds.output.gene_bed,
         tss_counts = rules.bedtools_multicov.output.tss_counts,
         gene_body_counts = rules.bedtools_multicov.output.gene_body_counts
     output:
-        f"{PREFIX}/count/{config['proj']}_GeneBodyCounts_filtered.txt"
+        f"{PREFIX}/bedtools_multicov/{config['proj']}_GeneBodyCounts_filtered.txt"
     params:
-        job_name = f"{config['proj']}_FILTER",
+        job_name = f"{config['proj']}_FILTERGENEBODY",
         rpm_thresh = 1,
         dist_thresh = 1000,
-        bed_genome = config[GENOME]['bed_genome'],
+        chrom_sizes = config[GENOME]['chrom_sizes'],
         tss_shift = 1500,
         tes_shift = 500
     resources:
@@ -161,7 +351,7 @@ rule filter_peaks:
         python3 scripts/filter_genebody_counts.py \
         -t {input.tss_counts} -b {input.gene_body_counts} \
         -r {params.rpm_thresh} -d {params.dist_thresh} \
-        -g {input.gene_bed} -c {params.bed_genome} \
+        -g {input.gene_bed} -c {params.chrom_sizes} \
         -sl {params.tss_shift} -sr {params.tes_shift} \
         -o {output}
         """
